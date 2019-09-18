@@ -1,0 +1,17 @@
+{
+  "name": "central_queue",
+  "version": "1.0.0",
+  "description": "a program used for completing thesis for bachelor degree",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "dimasajiwardhana",
+  "license": "ISC",
+  "dependencies": {
+    "amqplib": "^0.5.3",
+    "csv-parser": "^2.3.0",
+    "csvtojson": "^2.0.10",
+    "minimist": "^1.2.0"
+  }
+}
