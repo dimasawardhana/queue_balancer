@@ -6,6 +6,8 @@ from ast import literal_eval
 import os
 import sys
 import logging
+import Queue
+from pymongo import MongoClient
 from nltk.tokenize import RegexpTokenizer
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer, PorterStemmer
@@ -44,9 +46,16 @@ class Pipeline:
         self.stem_lock.acquire()
         self.wordCount_lock.acquire()
         #
+        self.count = 0
+        self.datax = []
         self.status = True
         self.connection = pika.BlockingConnection(pika.ConnectionParameters("localhost"))
         self.channel = self.connection.channel()
+        # mongodb
+        self.client = MongoClient('mongodb://localhost:27017/')
+        self.db = self.client.TA
+        self.collection = self.db.wordCount
+        self.docQueue = Queue.Queue()
         
     def produce(self):
         self.channel.queue_declare(queue=self.queue,durable=True)
@@ -100,12 +109,27 @@ class Pipeline:
             if w not in list_tf:
                 list_tf[w] = 0
             list_tf[w] += 1
-        self.prod_lock.release()
         data  = {
-            "_id" : self._id,
+            "id" : self._id,
             "result" : list_tf
         }
+
+        self.docQueue.put(data)
+        self.prod_lock.release()
+        
         return data
+    def insertDoc(self):
+        if not self.docQueue.empty():
+            # self.datax.append(self.docQueue.get())
+            # print len(self.datax)
+            # if len(self.datax) > 100:
+            #     x = self.collection.insert_many(self.datax).inserted_ids              
+            #     self.datax[:] = []
+            #     print x
+            data = self.docQueue.get()
+            x = self.collection.insert_one(data).inserted_id
+            print x
+        
     def hasDone(self):
         self.status = False
     def getStatus(self):
@@ -115,10 +139,9 @@ class Pipeline:
         # pipeline.hasDone()
 
 #main program
-SENTINEL = object()
 def _produce(pipeline):
-    print type(pipeline.queue), type(pipeline.prefetch)
     pipeline.produce()
+
 def _lowercase(pipeline):
     while pipeline.getStatus():
         pipeline.lowercasing()
@@ -131,32 +154,43 @@ def _stopword(pipeline):
 def _stem(pipeline):
     while pipeline.getStatus():
         pipeline.stem() 
+        # print type(pipeline.queue), type(pipeline.prefetch)
 def _result(pipeline):
     while pipeline.getStatus():
         mes = pipeline.result()
-        logging.info("get Result on id %d, : %s", mes["_id"], mes["result"])
+        # print mes
+        # logging.debug("get Result on id %d, : %s", mes["id"], mes["result"])
+        # success = col.insert_one(mes).inserted_id
+        # logging.info("%d inserted", success)
+def _insert(pipeline):
+    while pipeline.getStatus():
+        pipeline.insertDoc()
 
 def multiThread():
     print "ready pool # ", mp.current_process().name, "\n"
     pipeline = Pipeline()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:
         executor.submit(_produce, pipeline)
         executor.submit(_lowercase,pipeline)
         executor.submit(_tokenize,pipeline)
         executor.submit(_stopword,pipeline)
         executor.submit(_stem,pipeline)
         executor.submit(_result,pipeline)
+        executor.submit(_insert,pipeline)
+
 if __name__ == "__main__":
     format = "%(asctime)s: %(message)s"
     logging.basicConfig(format=format, level=logging.INFO,
                         datefmt="%H:%M:%S")
     # logging.getLogger().setLevel(logging.DEBUG)
     # multiThread()
-    pool = mp.Pool()
-    workers = mp.cpu_count() - 1
-    for i in range(workers):
-        print "initialize cpu",i
-        pool.apply_async(multiThread)
+    
+    # pool = mp.Pool()
+    # workers = mp.cpu_count() - 1
+    # for i in range(workers):
+    #     print "initialize cpu",i
+    #     pool.apply_async(multiThread)
+    multiThread()
     try:
         while True:
             continue
