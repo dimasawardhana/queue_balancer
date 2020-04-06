@@ -12,6 +12,6 @@
     "amqplib": "^0.5.3",
     "csv-parser": "^2.3.0",
     "csvtojson": "^2.0.10",
-    "minimist": "^1.2.0"
+    "minimist": "^1.2.3"
   }
 }
